@@ -6,10 +6,20 @@ from pydantic import BaseModel
 from langchain_community.vectorstores import Chroma
 from langchain_community.embeddings import HuggingFaceEmbeddings
 
+from langchain_community.document_loaders import PyPDFLoader
+from langchain_text_splitters import RecursiveCharacterTextSplitter
+
 import ollama
 import json
 
+from fastapi import UploadFile, File
+import os
+
 app = FastAPI()
+
+DATA_PATH = "C:/Personal Projects/rag_pdf_chatbot/backend/data"
+
+os.makedirs(DATA_PATH, exist_ok=True)
 
 app.add_middleware(
     CORSMiddleware,
@@ -90,3 +100,40 @@ def ask_sources(request: QuestionRequest):
         })
 
     return {"sources": sources}
+
+@app.post("/upload-pdf")
+async def upload_pdf(file: UploadFile = File(...)):
+
+    file_path = os.path.join(DATA_PATH, file.filename)
+
+    # Save uploaded PDF
+    with open(file_path, "wb") as f:
+        content = await file.read()
+        f.write(content)
+
+    # Load PDF
+    loader = PyPDFLoader(file_path)
+    pages = loader.load()
+
+    # Split
+    splitter = RecursiveCharacterTextSplitter(
+        chunk_size=800,
+        chunk_overlap=100
+    )
+
+    docs = splitter.split_documents(pages)
+
+    # Metadata
+    for doc in docs:
+        doc.metadata = {
+            "source": file.filename,
+            "page": doc.metadata.get("page", -1)
+        }
+
+    # Add to existing vector DB
+    vectorstore.add_documents(docs)
+
+    return {
+        "message": f"{file.filename} uploaded successfully",
+        "chunks_added": len(docs)
+    }

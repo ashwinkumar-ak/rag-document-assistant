@@ -5,6 +5,27 @@ function App() {
   const [question, setQuestion] = useState("");
   const [chat, setChat] = useState([]);
   const [sources, setSources] = useState([]);
+  const [selectedFile, setSelectedFile] = useState(null);
+
+  const uploadPDF = async () => {
+
+  if (!selectedFile) {
+    alert("Please select a PDF");
+    return;
+  }
+
+  const formData = new FormData();
+  formData.append("file", selectedFile);
+
+  const response = await fetch("http://127.0.0.1:8000/upload-pdf", {
+    method: "POST",
+    body: formData
+  });
+
+  const data = await response.json();
+
+  alert(data.message);
+};
 
   const askQuestion = async () => {
 
@@ -85,6 +106,24 @@ function App() {
           </div>
         ))}
       </div>
+
+    <div style={{ marginBottom: "20px" }}>
+      <input
+        type="file"
+        accept=".pdf"
+        onChange={(e) => setSelectedFile(e.target.files[0])}
+      />
+    
+      <button
+        onClick={uploadPDF}
+        style={{
+          marginLeft: "10px",
+          padding: "5px 10px"
+        }}
+      >
+        Upload PDF
+      </button>
+    </div>
 
       {/* INPUT */}
       <input

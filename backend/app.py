@@ -85,6 +85,8 @@ class QuestionRequest(BaseModel):
 
     history: list = []
 
+    selected_pdfs: list = []
+
 # ======================================================
 # EMBEDDINGS
 # ======================================================
@@ -121,6 +123,43 @@ def load_bm25(vectorstore):
 
     metadatas = data["metadatas"]
 
+    return docs, metadatas
+
+# ======================================================
+# HYBRID SEARCH
+# ======================================================
+
+def hybrid_search(query, vectorstore, selected_pdfs=None, k=3):
+
+    docs, metadatas = load_bm25(
+    vectorstore
+    )
+
+    # FILTER PDFs
+
+    if selected_pdfs:
+
+        filtered_docs = []
+
+        filtered_metadatas = []
+
+        for doc, metadata in zip(
+            docs,
+            metadatas
+        ):
+
+            if metadata.get("source") in selected_pdfs:
+
+                filtered_docs.append(doc)
+
+                filtered_metadatas.append(metadata)
+
+        docs = filtered_docs
+
+        metadatas = filtered_metadatas
+
+    # BUILD BM25
+
     tokenized = [
         doc.split()
         for doc in docs
@@ -128,24 +167,26 @@ def load_bm25(vectorstore):
 
     bm25 = BM25Okapi(tokenized)
 
-    return docs, metadatas, bm25
-
-# ======================================================
-# HYBRID SEARCH
-# ======================================================
-
-def hybrid_search(query, vectorstore, k=3):
-
-    docs, metadatas, bm25 = load_bm25(
-        vectorstore
-    )
-
     # VECTOR SEARCH
 
-    vector_results = vectorstore.similarity_search(
-        query,
-        k=k
+    all_vector_results = vectorstore.similarity_search(
+    query,
+    k=20
     )
+
+    vector_results = []
+
+    for doc in all_vector_results:
+
+        if not selected_pdfs:
+
+            vector_results.append(doc)
+
+        elif doc.metadata.get("source") in selected_pdfs:
+
+            vector_results.append(doc)
+
+    vector_results = vector_results[:k]
 
     # BM25
 
@@ -367,7 +408,8 @@ def ask_stream(
 
     docs = hybrid_search(
     req.question,
-    vectorstore
+    vectorstore,
+    req.selected_pdfs
     )
 
     # CONTEXT
@@ -474,7 +516,8 @@ def ask_sources(
 
     docs = hybrid_search(
     req.question,
-    vectorstore
+    vectorstore,
+    req.selected_pdfs
     )
 
     sources = []

@@ -42,6 +42,12 @@ function App() {
   const [pdfs, setPdfs] = useState([]);
 
   // ======================================================
+  // PDF SPECIFIC SEARCH
+  // ======================================================
+
+  const [selectedPDFs, setSelectedPDFs] = useState([]);
+
+  // ======================================================
   // LOAD HISTORY
   // ======================================================
 
@@ -158,7 +164,7 @@ function App() {
     };
 
   // ======================================================
-  // LOAD HISTORY
+  // LOAD PDF
   // ======================================================
     const loadPDFs = async () => {
 
@@ -175,6 +181,29 @@ function App() {
     const data = await response.json();
 
     setPdfs(data);
+  };
+
+  // ======================================================
+  // PDF SPECIFIC SEARCH
+  // ======================================================  
+
+
+  const togglePDF = (pdf) => {
+
+  if (selectedPDFs.includes(pdf)) {
+
+    setSelectedPDFs(
+      selectedPDFs.filter(
+        p => p !== pdf
+      )
+    );
+
+  } else {
+
+    setSelectedPDFs([
+      ...selectedPDFs,
+      pdf]);
+    }
   };
 
   // ======================================================
@@ -220,7 +249,8 @@ function App() {
         },
         body: JSON.stringify({
           question,
-          history: newChat
+          history: newChat,
+          selected_pdfs: selectedPDFs
         })
       }
     );
@@ -275,7 +305,8 @@ function App() {
           },
           body: JSON.stringify({
             question,
-            history: newChat
+            history: newChat,
+            selected_pdfs: selectedPDFs
           })
         }
       );
@@ -519,7 +550,25 @@ function App() {
               }}
             >
             
-              <span>{pdf}</span>
+              <div>
+
+                <input
+                  type="checkbox"
+                  checked={
+                    selectedPDFs.includes(pdf)
+                  }
+                  onChange={() =>
+                    togglePDF(pdf)
+                  }
+                />
+
+                <span style={{
+                  marginLeft: "8px"
+                }}>
+                  {pdf}
+                </span>
+              
+              </div>
             
               <button
                 onClick={() =>
@@ -532,7 +581,7 @@ function App() {
             </div>
           ))
         )}
-      
+
       </div>
 
       {/* CHAT */}

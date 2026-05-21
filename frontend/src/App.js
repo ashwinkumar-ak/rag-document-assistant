@@ -9,7 +9,9 @@ function App() {
   // AUTH
   // ======================================================
 
-  const [username, setUsername] = useState("");
+  const [username, setUsername] = useState(
+    localStorage.getItem("username") || ""
+  );
 
   const [password, setPassword] = useState("");
 
@@ -81,9 +83,14 @@ function App() {
           "token",
           data.token
         );
-
+      
+        localStorage.setItem(
+          "username",
+          username
+        );
+      
         setToken(data.token);
-
+      
         alert("Login successful");
       }
 
@@ -100,6 +107,8 @@ function App() {
   const logout = () => {
 
     localStorage.removeItem("token");
+
+    localStorage.removeItem("username");
 
     setToken(null);
 
@@ -273,12 +282,16 @@ function App() {
     );
 
     const response = await fetch(
-      "http://127.0.0.1:8000/upload-pdf",
-      {
-        method: "POST",
-        body: formData
-      }
-    );
+    "http://127.0.0.1:8000/upload-pdf",
+    {
+      method: "POST",
+      headers: {
+        "Authorization":
+          `Bearer ${token}`
+      },
+      body: formData
+    }
+  );
 
     const data = await response.json();
 
@@ -444,13 +457,9 @@ function App() {
           >
 
             <b>
-              {msg.role}:
-            </b>
-
-            <div>
-              {msg.content}
-            </div>
-
+              {msg.role === "user" ? `🧑 ${username}` : "🤖 AI"}: 
+            </b> {msg.content}
+            
           </div>
         ))}
 

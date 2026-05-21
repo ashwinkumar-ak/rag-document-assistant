@@ -97,47 +97,57 @@ embedding = HuggingFaceEmbeddings(
 # CHROMA
 # ======================================================
 
-vectorstore = Chroma(
-    persist_directory="chroma_db",
-    embedding_function=embedding
-)
+def get_vectorstore(username):
+
+    path = f"chroma_db/{username}"
+
+    os.makedirs(path, exist_ok=True)
+
+    return Chroma(
+        persist_directory=path,
+        embedding_function=embedding
+    )
+
 
 # ======================================================
 # BM25
 # ======================================================
 
-def load_bm25():
-
-    global all_docs
-    global all_metadatas
-    global bm25
+def load_bm25(vectorstore):
 
     data = vectorstore.get()
 
-    all_docs = data["documents"]
+    docs = data["documents"]
 
-    all_metadatas = data["metadatas"]
+    metadatas = data["metadatas"]
 
     tokenized = [
         doc.split()
-        for doc in all_docs
+        for doc in docs
     ]
 
     bm25 = BM25Okapi(tokenized)
 
-
-load_bm25()
+    return docs, metadatas, bm25
 
 # ======================================================
 # HYBRID SEARCH
 # ======================================================
 
-def hybrid_search(query, k=3):
+def hybrid_search(query, vectorstore, k=3):
+
+    docs, metadatas, bm25 = load_bm25(
+        vectorstore
+    )
+
+    # VECTOR SEARCH
 
     vector_results = vectorstore.similarity_search(
         query,
         k=k
     )
+
+    # BM25
 
     scores = bm25.get_scores(
         query.split()
@@ -154,9 +164,11 @@ def hybrid_search(query, k=3):
     for idx in top_indices:
 
         bm25_results.append({
-            "page_content": all_docs[idx],
-            "metadata": all_metadatas[idx]
+            "page_content": docs[idx],
+            "metadata": metadatas[idx]
         })
+
+    # COMBINE
 
     combined = []
 
@@ -335,6 +347,8 @@ def ask_stream(
 
     user_id = user["user_id"]
 
+    vectorstore = get_vectorstore(user["username"])
+
     db = SessionLocal()
 
     # SAVE USER MESSAGE
@@ -351,7 +365,10 @@ def ask_stream(
 
     # SEARCH
 
-    docs = hybrid_search(req.question)
+    docs = hybrid_search(
+    req.question,
+    vectorstore
+    )
 
     # CONTEXT
 
@@ -451,9 +468,14 @@ def ask_sources(
 
     token = get_token(authorization)
 
-    get_user(token)
+    user = get_user(token)
 
-    docs = hybrid_search(req.question)
+    vectorstore = get_vectorstore(user["username"])
+
+    docs = hybrid_search(
+    req.question,
+    vectorstore
+    )
 
     sources = []
 
@@ -515,11 +537,26 @@ def history(
 
 @app.post("/upload-pdf")
 async def upload_pdf(
-    file: UploadFile = File(...)
+    file: UploadFile = File(...),
+    authorization: str = Header(None)
 ):
+    
+    
+    token = get_token(authorization)
+
+    user = get_user(token)
+
+
+    user_id = user["user_id"]
+
+    username = user["username"]
+
+    user_folder = f"data/{username}"
+
+    os.makedirs(user_folder, exist_ok=True)
 
     file_path = os.path.join(
-        DATA_PATH,
+        user_folder,
         file.filename
     )
 
@@ -528,6 +565,8 @@ async def upload_pdf(
         content = await file.read()
 
         f.write(content)
+
+    vectorstore = get_vectorstore(user["username"])
 
     # LOAD PDF
 
@@ -561,8 +600,6 @@ async def upload_pdf(
     vectorstore.add_documents(docs)
 
     # RELOAD BM25
-
-    load_bm25()
 
     return {
         "message": f"{file.filename} uploaded",

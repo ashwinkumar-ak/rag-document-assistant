@@ -1,4 +1,4 @@
-import React, { useState } from "react";
+import React, { useState, useEffect } from "react";
 
 function App() {
 
@@ -6,6 +6,23 @@ function App() {
   const [chat, setChat] = useState([]);
   const [sources, setSources] = useState([]);
   const [selectedFile, setSelectedFile] = useState(null);
+
+  useEffect(() => {
+
+    loadHistory();
+
+  }, []);
+
+  const loadHistory = async () => {
+
+    const response = await fetch(
+      "http://127.0.0.1:8000/chat-history"
+    );
+
+    const data = await response.json();
+
+    setChat(data);
+  };
 
   const uploadPDF = async () => {
 

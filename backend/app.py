@@ -10,6 +10,9 @@ from langchain_text_splitters import RecursiveCharacterTextSplitter
 
 from rank_bm25 import BM25Okapi
 
+from database import SessionLocal, engine
+from models import Base, ChatMessage
+
 import ollama
 import os
 
@@ -26,6 +29,13 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
+
+# -------------------------------
+# SQLITE DB SETUP
+# -------------------------------
+
+Base.metadata.create_all(bind=engine)
+
 
 # -------------------------------
 # DATA FOLDER
@@ -198,8 +208,20 @@ Question:
 
 Answer:
 """
+    db = SessionLocal()
+
+    # Save user message
+    user_msg = ChatMessage(
+        role="user",
+        content=question
+    )
+
+    db.add(user_msg)
+    db.commit()
 
     def generate():
+
+        full_answer = ""
 
         response = ollama.chat(
             model="llama3",
@@ -215,7 +237,21 @@ Answer:
             token = chunk["message"]["content"]
 
             if token:
+
+                full_answer += token
+
                 yield token
+
+        # Save assistant message
+        ai_msg = ChatMessage(
+            role="assistant",
+            content=full_answer
+        )
+
+        db.add(ai_msg)
+        db.commit()
+
+        db.close()
 
     return StreamingResponse(
         generate(),
@@ -288,3 +324,28 @@ async def upload_pdf(file: UploadFile = File(...)):
         "message": f"{file.filename} uploaded successfully",
         "chunks_added": len(docs)
     }
+
+# -------------------------------
+# CHAT HISTORY API
+# -------------------------------
+
+@app.get("/chat-history")
+def get_chat_history():
+
+    db = SessionLocal()
+
+    messages = db.query(ChatMessage).all()
+
+    result = []
+
+    for msg in messages:
+
+        result.append({
+            "role": msg.role,
+            "content": msg.content,
+            "timestamp": str(msg.timestamp)
+        })
+
+    db.close()
+
+    return result

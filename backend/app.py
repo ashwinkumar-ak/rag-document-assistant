@@ -134,7 +134,18 @@ def hybrid_search(query, k=3):
             seen.add(content)
             unique_docs.append(doc)
 
-    return unique_docs[:k]
+    # Add citation ids
+    final_docs = []
+
+    for idx, doc in enumerate(unique_docs[:k]):
+
+        final_docs.append({
+            "id": idx + 1,
+            "page_content": doc["page_content"],
+            "metadata": doc["metadata"]
+        })
+
+    return final_docs
 
 # -------------------------------
 # STREAMING CHAT API
@@ -152,7 +163,11 @@ def ask_stream(request: QuestionRequest):
     context = ""
 
     for doc in docs:
-        context += doc["page_content"] + "\n\n"
+        context += f"""
+[Source {doc['id']}]
+{doc['page_content']}
+
+"""
 
     # Chat history
     history_text = ""
@@ -164,7 +179,13 @@ def ask_stream(request: QuestionRequest):
     prompt = f"""
 You are a helpful AI assistant.
 
-Use ONLY the context below.
+Use ONLY the provided context.
+
+IMPORTANT:
+- Whenever you use information from a source,
+  cite it using [Source X]
+- Example:
+  Kubernetes uses Pods [Source 1]
 
 Context:
 {context}
@@ -215,6 +236,7 @@ def ask_sources(request: QuestionRequest):
     for doc in docs:
 
         sources.append({
+            "id": doc["id"],
             "file": doc["metadata"].get("source", "unknown.pdf"),
             "page": doc["metadata"].get("page", -1),
             "snippet": doc["page_content"][:150]

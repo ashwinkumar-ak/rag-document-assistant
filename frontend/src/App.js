@@ -163,9 +163,17 @@ function App() {
                 borderRadius: "5px"
               }}
             >
-              <b>File:</b> {s.file} <br />
-              <b>Page:</b> {s.page + 1} <br />
-              <p>{s.snippet}</p>
+            
+              <b>[Source {s.id}]</b><br />
+            
+              <b>File:</b> {s.file}<br />
+            
+              <b>Page:</b> {s.page + 1}<br />
+            
+              <p style={{ marginTop: "5px" }}>
+                {s.snippet}
+              </p>
+            
             </div>
           ))
         )}

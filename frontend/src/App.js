@@ -3,6 +3,17 @@ import React, {
   useEffect
 } from "react";
 
+import { Document, Page } from "react-pdf";
+
+import { pdfjs } from "react-pdf";
+
+
+import "react-pdf/dist/Page/TextLayer.css";
+import "react-pdf/dist/Page/AnnotationLayer.css";
+
+pdfjs.GlobalWorkerOptions.workerSrc =
+  `${process.env.PUBLIC_URL}/pdf.worker.min.js`;
+
 function App() {
 
   // ======================================================
@@ -46,6 +57,14 @@ function App() {
   // ======================================================
 
   const [selectedPDFs, setSelectedPDFs] = useState([]);
+
+  // ======================================================
+  // PDF PREVIEW
+  // ======================================================
+
+  const [selectedSource, setSelectedSource] = useState(null);
+  // Higlight line
+  const [numPages, setNumPages] = useState(null);
 
   // ======================================================
   // LOAD HISTORY
@@ -659,17 +678,21 @@ function App() {
           sources.map((s, index) => (
 
             <div
-              key={index}
+              onClick={() =>
+                setSelectedSource(s)
+              }
               style={{
+                cursor: "pointer",
                 border: "1px solid #ddd",
                 padding: "10px",
                 marginBottom: "10px",
                 borderRadius: "5px"
               }}
+              key={`${s.source}-${index}`}
             >
 
               <b>
-                [Source {s.id}]
+                [Source {index + 1}]
               </b>
 
               <br />
@@ -680,9 +703,10 @@ function App() {
 
               <br />
 
-              <b>Page:</b>
-              {" "}
-              {s.page + 1}
+              <b>{s.source}</b>
+              <p>
+                Page: {s.page + 1}
+              </p>
 
               <p
                 style={{
@@ -697,6 +721,105 @@ function App() {
         )}
 
       </div>
+
+      {selectedSource && (
+
+        <div
+          style={{
+            position: "fixed",
+            top: 0,
+            left: 0,
+            width: "100%",
+            height: "100%",
+            background:
+              "rgba(0,0,0,0.7)",
+            zIndex: 999
+          }}
+        >
+        
+          <div
+            style={{
+              width: "80%",
+              height: "90%",
+              background: "white",
+              margin: "20px auto",
+              padding: "10px",
+              position: "relative"
+            }}
+          >
+          
+            <button
+              onClick={() =>
+                setSelectedSource(null)
+              }
+              style={{
+                position: "absolute",
+                right: "10px",
+                top: "10px"
+              }}
+            >
+              Close
+            </button>
+            
+            <h2>
+              {selectedSource.source}
+            </h2>
+            
+            <p>
+              Page:
+              {selectedSource.page + 1}
+            </p>
+            <div
+                style={{
+                  overflow: "scroll",
+                  height: "90%"
+                }}
+              >
+            <Document
+              file={
+                `http://127.0.0.1:8000/pdf/${username}/${selectedSource.source}`
+              }
+              onLoadSuccess={({ numPages }) =>
+                setNumPages(numPages)
+              }
+              loading="Loading PDF..."
+            >
+            
+              <Page
+                pageNumber={
+                  selectedSource.page + 1
+                }
+                width={900}
+              
+                customTextRenderer={({
+                  str
+                }) => {
+                
+                  if (
+                    selectedSource.snippet
+                      .toLowerCase()
+                      .includes(
+                        str.toLowerCase()
+                      )
+                  ) {
+                  
+                    return (
+                      `<mark>${str}</mark>`
+                    );
+                  }
+                
+                  return str;
+                }}
+              />
+
+            </Document>
+          
+          </div>
+
+          </div>
+            
+        </div>
+      )}
 
     </div>
   );

@@ -8,6 +8,7 @@ from fastapi import (
 
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import StreamingResponse
+from fastapi.responses import FileResponse
 
 from pydantic import BaseModel
 
@@ -30,6 +31,7 @@ import os
 
 from database import SessionLocal, engine
 from models import Base, ChatMessage, User
+
 
 # ======================================================
 # APP
@@ -524,17 +526,24 @@ def ask_sources(
 
     for doc in docs:
 
+        metadata = doc["metadata"]
+
         sources.append({
-            "id": doc["id"],
-            "file": doc["metadata"].get(
-                "source",
-                "unknown.pdf"
-            ),
-            "page": doc["metadata"].get(
-                "page",
-                -1
-            ),
-            "snippet": doc["page_content"][:150]
+
+            "source":
+                metadata.get(
+                    "source",
+                    "unknown"
+                ),
+
+            "page":
+                metadata.get(
+                    "page",
+                    0
+                ),
+
+            "snippet":
+                doc["page_content"][:300]
         })
 
     return {
@@ -738,3 +747,22 @@ def delete_pdf(
     return {
         "message": f"{filename} deleted"
     }
+
+# ======================================================
+# PREVIEW PDF
+# ======================================================
+
+@app.get("/pdf/{username}/{filename}")
+def get_pdf(
+    username: str,
+    filename: str
+):
+
+    file_path = os.path.join(
+        f"data/{username}",
+        filename
+    )
+
+    return FileResponse(
+        file_path,
+        media_type="application/pdf")

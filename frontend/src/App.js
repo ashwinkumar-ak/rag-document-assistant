@@ -20,6 +20,7 @@ function App() {
   );
 
   const [isLogin, setIsLogin] = useState(true);
+  
 
   // ======================================================
   // CHAT
@@ -33,16 +34,25 @@ function App() {
 
   const [selectedFile, setSelectedFile] = useState(null);
 
+
+  // ======================================================
+  // PDF MANAGEMENT
+  // ======================================================
+
+  const [pdfs, setPdfs] = useState([]);
+
   // ======================================================
   // LOAD HISTORY
   // ======================================================
 
   useEffect(() => {
 
-    if (token) {
+  if (token) {
 
-      loadHistory();
-    }
+    loadHistory();
+
+    loadPDFs();
+  }
 
   }, [token]);
 
@@ -145,6 +155,26 @@ function App() {
     const data = await response.json();
 
     setChat(data);
+    };
+
+  // ======================================================
+  // LOAD HISTORY
+  // ======================================================
+    const loadPDFs = async () => {
+
+    const response = await fetch(
+      "http://127.0.0.1:8000/my-pdfs",
+      {
+        headers: {
+          "Authorization":
+            `Bearer ${token}`
+        }
+      }
+    );
+
+    const data = await response.json();
+
+    setPdfs(data);
   };
 
   // ======================================================
@@ -296,6 +326,32 @@ function App() {
     const data = await response.json();
 
     alert(data.message);
+
+    loadPDFs();
+  };
+
+  // ======================================================
+  // DELETE PDF
+  // ======================================================
+
+  const deletePDF = async (filename) => {
+
+  const response = await fetch(
+    `http://127.0.0.1:8000/delete-pdf/${filename}`,
+    {
+      method: "DELETE",
+      headers: {
+        "Authorization":
+          `Bearer ${token}`
+      }
+    }
+  );
+
+  const data = await response.json();
+
+  alert(data.message);
+
+  loadPDFs();
   };
 
   // ======================================================
@@ -433,6 +489,50 @@ function App() {
           Upload PDF
         </button>
 
+      </div>
+
+      <div
+        style={{
+          border: "1px solid #ccc",
+          padding: "10px",
+          marginBottom: "20px"
+        }}
+      >
+      
+        <h3>📁 My PDFs</h3>
+      
+        {pdfs.length === 0 ? (
+        
+          <p>No PDFs uploaded</p>
+        
+        ) : (
+        
+          pdfs.map((pdf, index) => (
+          
+            <div
+              key={index}
+              style={{
+                display: "flex",
+                justifyContent:
+                  "space-between",
+                marginBottom: "10px"
+              }}
+            >
+            
+              <span>{pdf}</span>
+            
+              <button
+                onClick={() =>
+                  deletePDF(pdf)
+                }
+              >
+                ❌
+              </button>
+              
+            </div>
+          ))
+        )}
+      
       </div>
 
       {/* CHAT */}

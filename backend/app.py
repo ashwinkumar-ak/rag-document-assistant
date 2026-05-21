@@ -605,3 +605,93 @@ async def upload_pdf(
         "message": f"{file.filename} uploaded",
         "chunks_added": len(docs)
     }
+
+# ======================================================
+# MY PDF
+# ======================================================
+
+@app.get("/my-pdfs")
+def my_pdfs(
+    authorization: str = Header(None)
+):
+
+    token = get_token(authorization)
+
+    user = get_user(token)
+
+    username = user["username"]
+
+    user_folder = f"data/{username}"
+
+    if not os.path.exists(user_folder):
+
+        return []
+
+    files = os.listdir(user_folder)
+
+    pdfs = []
+
+    for file in files:
+
+        if file.endswith(".pdf"):
+
+            pdfs.append(file)
+
+    return pdfs
+
+# ======================================================
+# DELETE PDF
+# ======================================================
+
+@app.delete("/delete-pdf/{filename}")
+def delete_pdf(
+    filename: str,
+    authorization: str = Header(None)
+):
+
+    token = get_token(authorization)
+
+    user = get_user(token)
+
+    username = user["username"]
+
+    user_folder = f"data/{username}"
+
+    file_path = os.path.join(
+        user_folder,
+        filename
+    )
+
+    # DELETE FILE
+
+    if os.path.exists(file_path):
+
+        os.remove(file_path)
+
+    # DELETE VECTOR DB
+
+    vectorstore = get_vectorstore(username)
+
+    data = vectorstore.get()
+
+    ids_to_delete = []
+
+    for idx, metadata in enumerate(
+        data["metadatas"]
+    ):
+
+        if metadata.get("source") == filename:
+
+            ids_to_delete.append(
+                data["ids"][idx]
+            )
+
+    if ids_to_delete:
+
+        vectorstore.delete(
+            ids=ids_to_delete
+        )
+
+    return {
+        "message": f"{filename} deleted"
+    }

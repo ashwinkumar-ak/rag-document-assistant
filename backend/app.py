@@ -1,24 +1,39 @@
-from fastapi import FastAPI, UploadFile, File
+from fastapi import (
+    FastAPI,
+    UploadFile,
+    File,
+    Header,
+    HTTPException
+)
+
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import StreamingResponse
+
 from pydantic import BaseModel
 
 from langchain_community.vectorstores import Chroma
 from langchain_community.embeddings import HuggingFaceEmbeddings
 from langchain_community.document_loaders import PyPDFLoader
-from langchain_text_splitters import RecursiveCharacterTextSplitter
+
+from langchain_text_splitters import (
+    RecursiveCharacterTextSplitter
+)
 
 from rank_bm25 import BM25Okapi
 
-from database import SessionLocal, engine
-from models import Base, ChatMessage
+from jose import jwt, JWTError
+
+from passlib.context import CryptContext
 
 import ollama
 import os
 
-# -------------------------------
-# FASTAPI SETUP
-# -------------------------------
+from database import SessionLocal, engine
+from models import Base, ChatMessage, User
+
+# ======================================================
+# APP
+# ======================================================
 
 app = FastAPI()
 
@@ -30,48 +45,66 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-# -------------------------------
-# SQLITE DB SETUP
-# -------------------------------
+# ======================================================
+# DATABASE
+# ======================================================
 
 Base.metadata.create_all(bind=engine)
 
+# ======================================================
+# CONSTANTS
+# ======================================================
 
-# -------------------------------
-# DATA FOLDER
-# -------------------------------
+DATA_PATH = "data"
 
-DATA_PATH = "C:/Personal Projects/rag_pdf_chatbot/backend/data"
 os.makedirs(DATA_PATH, exist_ok=True)
 
-# -------------------------------
-# REQUEST MODEL
-# -------------------------------
+SECRET_KEY = "SUPER_SECRET_KEY"
+
+ALGORITHM = "HS256"
+
+pwd_context = CryptContext(
+    schemes=["bcrypt"],
+    deprecated="auto"
+)
+
+# ======================================================
+# REQUEST MODELS
+# ======================================================
+
+class AuthRequest(BaseModel):
+
+    username: str
+
+    password: str
+
 
 class QuestionRequest(BaseModel):
+
     question: str
+
     history: list = []
 
-# -------------------------------
-# EMBEDDING MODEL
-# -------------------------------
+# ======================================================
+# EMBEDDINGS
+# ======================================================
 
 embedding = HuggingFaceEmbeddings(
     model_name="sentence-transformers/all-MiniLM-L6-v2"
 )
 
-# -------------------------------
-# CHROMA DB
-# -------------------------------
+# ======================================================
+# CHROMA
+# ======================================================
 
 vectorstore = Chroma(
-    persist_directory="C:/Personal Projects/rag_pdf_chatbot/backend/chroma_db",
+    persist_directory="chroma_db",
     embedding_function=embedding
 )
 
-# -------------------------------
-# BM25 SETUP
-# -------------------------------
+# ======================================================
+# BM25
+# ======================================================
 
 def load_bm25():
 
@@ -79,61 +112,67 @@ def load_bm25():
     global all_metadatas
     global bm25
 
-    all_docs_data = vectorstore.get()
+    data = vectorstore.get()
 
-    all_docs = all_docs_data["documents"]
-    all_metadatas = all_docs_data["metadatas"]
+    all_docs = data["documents"]
 
-    tokenized_docs = [doc.split(" ") for doc in all_docs]
+    all_metadatas = data["metadatas"]
 
-    bm25 = BM25Okapi(tokenized_docs)
+    tokenized = [
+        doc.split()
+        for doc in all_docs
+    ]
 
-# Initial BM25 load
+    bm25 = BM25Okapi(tokenized)
+
+
 load_bm25()
 
-# -------------------------------
+# ======================================================
 # HYBRID SEARCH
-# -------------------------------
+# ======================================================
 
 def hybrid_search(query, k=3):
 
-    # VECTOR SEARCH
-    vector_results = vectorstore.similarity_search(query, k=k)
+    vector_results = vectorstore.similarity_search(
+        query,
+        k=k
+    )
 
-    # BM25 SEARCH
-    tokenized_query = query.split(" ")
-
-    bm25_scores = bm25.get_scores(tokenized_query)
+    scores = bm25.get_scores(
+        query.split()
+    )
 
     top_indices = sorted(
-        range(len(bm25_scores)),
-        key=lambda i: bm25_scores[i],
+        range(len(scores)),
+        key=lambda i: scores[i],
         reverse=True
     )[:k]
 
     bm25_results = []
 
     for idx in top_indices:
+
         bm25_results.append({
             "page_content": all_docs[idx],
             "metadata": all_metadatas[idx]
         })
 
-    # COMBINE RESULTS
     combined = []
 
-    # Vector results
     for doc in vector_results:
+
         combined.append({
             "page_content": doc.page_content,
             "metadata": doc.metadata
         })
 
-    # BM25 results
     combined.extend(bm25_results)
 
-    # Remove duplicates
+    # REMOVE DUPLICATES
+
     unique_docs = []
+
     seen = set()
 
     for doc in combined:
@@ -141,10 +180,13 @@ def hybrid_search(query, k=3):
         content = doc["page_content"]
 
         if content not in seen:
+
             seen.add(content)
+
             unique_docs.append(doc)
 
-    # Add citation ids
+    # ADD IDS
+
     final_docs = []
 
     for idx, doc in enumerate(unique_docs[:k]):
@@ -157,45 +199,191 @@ def hybrid_search(query, k=3):
 
     return final_docs
 
-# -------------------------------
-# STREAMING CHAT API
-# -------------------------------
+# ======================================================
+# AUTH HELPERS
+# ======================================================
+
+def get_token(authorization: str):
+
+    if not authorization:
+
+        raise HTTPException(
+            status_code=401,
+            detail="Missing token"
+        )
+
+    return authorization.replace(
+        "Bearer ",
+        ""
+    )
+
+
+def get_user(token: str):
+
+    try:
+
+        payload = jwt.decode(
+            token,
+            SECRET_KEY,
+            algorithms=[ALGORITHM]
+        )
+
+        return payload
+
+    except JWTError:
+
+        raise HTTPException(
+            status_code=401,
+            detail="Invalid token"
+        )
+
+# ======================================================
+# SIGNUP
+# ======================================================
+
+@app.post("/signup")
+def signup(req: AuthRequest):
+
+    db = SessionLocal()
+
+    existing = db.query(User).filter(
+        User.username == req.username
+    ).first()
+
+    if existing:
+
+        raise HTTPException(
+            status_code=400,
+            detail="User already exists"
+        )
+
+    user = User(
+        username=req.username,
+        password=pwd_context.hash(req.password)
+    )
+
+    db.add(user)
+
+    db.commit()
+
+    db.close()
+
+    return {
+        "message": "Signup successful"
+    }
+
+# ======================================================
+# LOGIN
+# ======================================================
+
+@app.post("/login")
+def login(req: AuthRequest):
+
+    db = SessionLocal()
+
+    user = db.query(User).filter(
+        User.username == req.username
+    ).first()
+
+    if not user:
+
+        raise HTTPException(
+            status_code=401,
+            detail="Invalid username"
+        )
+
+    valid = pwd_context.verify(
+        req.password,
+        user.password
+    )
+
+    if not valid:
+
+        raise HTTPException(
+            status_code=401,
+            detail="Invalid password"
+        )
+
+    token = jwt.encode(
+        {
+            "user_id": user.id,
+            "username": user.username
+        },
+        SECRET_KEY,
+        algorithm=ALGORITHM
+    )
+
+    db.close()
+
+    return {
+        "token": token
+    }
+
+# ======================================================
+# ASK STREAM
+# ======================================================
 
 @app.post("/ask-stream")
-def ask_stream(request: QuestionRequest):
+def ask_stream(
+    req: QuestionRequest,
+    authorization: str = Header(None)
+):
 
-    question = request.question
-    history = request.history
+    token = get_token(authorization)
 
-    docs = hybrid_search(question, k=3)
+    user = get_user(token)
 
-    # Build context
+    user_id = user["user_id"]
+
+    db = SessionLocal()
+
+    # SAVE USER MESSAGE
+
+    db.add(
+        ChatMessage(
+            role="user",
+            content=req.question,
+            user_id=user_id
+        )
+    )
+
+    db.commit()
+
+    # SEARCH
+
+    docs = hybrid_search(req.question)
+
+    # CONTEXT
+
     context = ""
 
     for doc in docs:
+
         context += f"""
 [Source {doc['id']}]
 {doc['page_content']}
 
 """
 
-    # Chat history
+    # HISTORY
+
     history_text = ""
 
-    for msg in history[-5:]:
-        history_text += f"{msg['role']}: {msg['content']}\n"
+    for msg in req.history[-5:]:
 
-    # Prompt
+        history_text += f"""
+{msg['role']}: {msg['content']}
+"""
+
+    # PROMPT
+
     prompt = f"""
 You are a helpful AI assistant.
 
 Use ONLY the provided context.
 
 IMPORTANT:
-- Whenever you use information from a source,
-  cite it using [Source X]
-- Example:
-  Kubernetes uses Pods [Source 1]
+- Cite sources using [Source X]
 
 Context:
 {context}
@@ -204,20 +392,10 @@ Conversation:
 {history_text}
 
 Question:
-{question}
+{req.question}
 
 Answer:
 """
-    db = SessionLocal()
-
-    # Save user message
-    user_msg = ChatMessage(
-        role="user",
-        content=question
-    )
-
-    db.add(user_msg)
-    db.commit()
 
     def generate():
 
@@ -242,13 +420,16 @@ Answer:
 
                 yield token
 
-        # Save assistant message
-        ai_msg = ChatMessage(
-            role="assistant",
-            content=full_answer
+        # SAVE AI MESSAGE
+
+        db.add(
+            ChatMessage(
+                role="assistant",
+                content=full_answer,
+                user_id=user_id
+            )
         )
 
-        db.add(ai_msg)
         db.commit()
 
         db.close()
@@ -258,14 +439,21 @@ Answer:
         media_type="text/plain"
     )
 
-# -------------------------------
-# SOURCES API
-# -------------------------------
+# ======================================================
+# SOURCES
+# ======================================================
 
 @app.post("/ask-sources")
-def ask_sources(request: QuestionRequest):
+def ask_sources(
+    req: QuestionRequest,
+    authorization: str = Header(None)
+):
 
-    docs = hybrid_search(request.question, k=3)
+    token = get_token(authorization)
+
+    get_user(token)
+
+    docs = hybrid_search(req.question)
 
     sources = []
 
@@ -273,68 +461,39 @@ def ask_sources(request: QuestionRequest):
 
         sources.append({
             "id": doc["id"],
-            "file": doc["metadata"].get("source", "unknown.pdf"),
-            "page": doc["metadata"].get("page", -1),
+            "file": doc["metadata"].get(
+                "source",
+                "unknown.pdf"
+            ),
+            "page": doc["metadata"].get(
+                "page",
+                -1
+            ),
             "snippet": doc["page_content"][:150]
         })
 
-    return {"sources": sources}
-
-# -------------------------------
-# PDF UPLOAD API
-# -------------------------------
-
-@app.post("/upload-pdf")
-async def upload_pdf(file: UploadFile = File(...)):
-
-    file_path = os.path.join(DATA_PATH, file.filename)
-
-    # Save file
-    with open(file_path, "wb") as f:
-        content = await file.read()
-        f.write(content)
-
-    # Load PDF
-    loader = PyPDFLoader(file_path)
-
-    pages = loader.load()
-
-    # Split text
-    splitter = RecursiveCharacterTextSplitter(
-        chunk_size=800,
-        chunk_overlap=100
-    )
-
-    docs = splitter.split_documents(pages)
-
-    # Metadata
-    for doc in docs:
-        doc.metadata = {
-            "source": file.filename,
-            "page": doc.metadata.get("page", -1)
-        }
-
-    # Add to vector DB
-    vectorstore.add_documents(docs)
-
-    # Reload BM25 index
-    load_bm25()
-
     return {
-        "message": f"{file.filename} uploaded successfully",
-        "chunks_added": len(docs)
+        "sources": sources
     }
 
-# -------------------------------
-# CHAT HISTORY API
-# -------------------------------
+# ======================================================
+# CHAT HISTORY
+# ======================================================
 
 @app.get("/chat-history")
-def get_chat_history():
+def history(
+    authorization: str = Header(None)
+):
+
+    token = get_token(authorization)
+
+    user = get_user(token)
 
     db = SessionLocal()
 
-    messages = db.query(ChatMessage).all()
+    messages = db.query(ChatMessage).filter(
+        ChatMessage.user_id == user["user_id"]
+    ).all()
 
     result = []
 
@@ -349,3 +508,63 @@ def get_chat_history():
     db.close()
 
     return result
+
+# ======================================================
+# PDF UPLOAD
+# ======================================================
+
+@app.post("/upload-pdf")
+async def upload_pdf(
+    file: UploadFile = File(...)
+):
+
+    file_path = os.path.join(
+        DATA_PATH,
+        file.filename
+    )
+
+    with open(file_path, "wb") as f:
+
+        content = await file.read()
+
+        f.write(content)
+
+    # LOAD PDF
+
+    loader = PyPDFLoader(file_path)
+
+    pages = loader.load()
+
+    # SPLIT
+
+    splitter = RecursiveCharacterTextSplitter(
+        chunk_size=800,
+        chunk_overlap=100
+    )
+
+    docs = splitter.split_documents(pages)
+
+    # METADATA
+
+    for doc in docs:
+
+        doc.metadata = {
+            "source": file.filename,
+            "page": doc.metadata.get(
+                "page",
+                -1
+            )
+        }
+
+    # STORE
+
+    vectorstore.add_documents(docs)
+
+    # RELOAD BM25
+
+    load_bm25()
+
+    return {
+        "message": f"{file.filename} uploaded",
+        "chunks_added": len(docs)
+    }

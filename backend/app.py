@@ -1,4 +1,5 @@
 from fastapi import (
+    Depends,
     FastAPI,
     UploadFile,
     File,
@@ -29,8 +30,10 @@ from passlib.context import CryptContext
 import ollama
 import os
 
+from requests import Session
+
 from database import SessionLocal, engine
-from models import Base, ChatMessage, User
+from models import Base, ChatMessage, User, ChatSession
 
 
 # ======================================================
@@ -89,6 +92,8 @@ class QuestionRequest(BaseModel):
 
     selected_pdfs: list = []
 
+    session_id:int
+
 # ======================================================
 # EMBEDDINGS
 # ======================================================
@@ -111,6 +116,20 @@ def get_vectorstore(username):
         persist_directory=path,
         embedding_function=embedding
     )
+
+# ======================================================
+# DATABASE SESSION
+# ======================================================
+
+def get_db():
+
+    db = SessionLocal()
+
+    try:
+        yield db
+
+    finally:
+        db.close()
 
 
 # ======================================================
@@ -400,7 +419,8 @@ def ask_stream(
         ChatMessage(
             role="user",
             content=req.question,
-            user_id=user_id
+            user_id=user_id,
+            session_id=req.session_id
         )
     )
 
@@ -487,7 +507,8 @@ Answer:
             ChatMessage(
                 role="assistant",
                 content=full_answer,
-                user_id=user_id
+                user_id=user_id,
+                session_id=req.session_id
             )
         )
 
@@ -766,3 +787,131 @@ def get_pdf(
     return FileResponse(
         file_path,
         media_type="application/pdf")
+
+# ======================================================
+# CREATE SESSION
+# ======================================================
+
+@app.post("/create-session")
+def create_session(
+    authorization: str = Header(None),
+    db: Session = Depends(get_db)
+):
+
+    user = get_user(
+        authorization.replace("Bearer ", "")
+    )
+
+    session = ChatSession(
+        title="New Chat",
+        user_id=user["user_id"]
+    )
+
+    db.add(session)
+
+    db.commit()
+
+    db.refresh(session)
+
+    return {
+        "id": session.id,
+        "title": session.title
+    }
+
+# ======================================================
+# GET SESSIONS
+# ======================================================
+
+@app.get("/sessions")
+def get_sessions(
+    authorization: str = Header(None),
+    db: Session = Depends(get_db)
+):
+
+    user = get_user(
+        authorization.replace("Bearer ", "")
+    )
+
+    sessions = db.query(ChatSession).filter(
+        ChatSession.user_id == user["user_id"]
+    ).order_by(
+        ChatSession.created_at.desc()
+    ).all()
+
+    return [
+        {
+            "id": s.id,
+            "title": s.title
+        }
+        for s in sessions
+    ]
+
+# ======================================================
+# LOAD SESSION MESSAGES
+# ======================================================
+
+@app.get("/session/{session_id}/messages")
+def get_session_messages(
+    session_id: int,
+    authorization: str = Header(None),
+    db: Session = Depends(get_db)
+):
+
+    user = get_user(
+        authorization.replace("Bearer ", "")
+    )
+
+    session = db.query(ChatSession).filter(
+        ChatSession.id == session_id,
+        ChatSession.user_id == user["user_id"]
+    ).first()
+
+    if not session:
+
+        raise HTTPException(
+            status_code=404,
+            detail="Session not found"
+        )
+
+    return [
+        {
+            "role": msg.role,
+            "content": msg.content
+        }
+        for msg in session.messages
+    ]
+
+# ======================================================
+# DELETE SESSION
+# ======================================================
+
+@app.delete("/session/{session_id}")
+def delete_session(
+    session_id: int,
+    authorization: str = Header(None),
+    db: Session = Depends(get_db)
+):
+
+    user = get_user(
+        authorization.replace("Bearer ", "")
+    )
+
+    session = db.query(ChatSession).filter(
+        ChatSession.id == session_id,
+        ChatSession.user_id == user["user_id"]
+    ).first()
+
+    if not session:
+
+        raise HTTPException(
+            status_code=404,
+            detail="Session not found"
+        )
+
+    db.delete(session)
+
+    db.commit()
+
+    return {
+        "message": "Session deleted"
+    }

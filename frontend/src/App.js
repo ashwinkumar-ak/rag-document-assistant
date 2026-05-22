@@ -577,7 +577,7 @@ function App() {
 
   <div
     style={{
-      background: "#f4f7fb",
+      background: "#000000",
       minHeight: "100vh",
       padding: "20px",
       fontFamily: "Arial"
@@ -592,10 +592,10 @@ function App() {
         justifyContent: "space-between",
         alignItems: "center",
         marginBottom: "20px",
-        background: "white",
+        background: "#1e1d1d",
         padding: "20px",
         borderRadius: "12px",
-        boxShadow: "0 2px 10px rgba(0,0,0,0.08)"
+        boxShadow: "0 2px 10px rgb(0, 0, 0)"
       }}
     >
 
@@ -604,16 +604,17 @@ function App() {
         <h1
           style={{
             margin: 0,
-            color: "#1e293b"
+            color: "#ffffff"
           }}
         >
-          📘 RAG PDF Chatbot
+          RAG PDF Chatbot
+          <hr />
         </h1>
 
         <p
           style={{
             marginTop: "5px",
-            color: "#64748b"
+            color: "#cecece"
           }}
         >
           Welcome, {username}
@@ -656,20 +657,22 @@ function App() {
 
         <div
           style={{
-            background: "white",
+            background: "#1e1d1d",
             padding: "20px",
             borderRadius: "12px",
             marginBottom: "20px",
-            boxShadow: "0 2px 10px rgba(0,0,0,0.08)"
+            boxShadow: "0 2px 10px rgb(0, 0, 0)"
           }}
         >
 
           <h3
             style={{
-              marginTop: 0
+              marginTop: 0,
+              color: "#ffff"
             }}
           >
-            📤 Upload PDF
+            Upload PDF
+            <hr />
           </h3>
 
           <input
@@ -681,7 +684,8 @@ function App() {
               )
             }
             style={{
-              marginBottom: "10px"
+              marginBottom: "10px",
+              color: "#ffff"
             }}
           />
 
@@ -689,7 +693,7 @@ function App() {
             onClick={uploadPDF}
             style={{
               width: "100%",
-              background: "#2563eb",
+              background: "#434447",
               color: "white",
               border: "none",
               padding: "10px",
@@ -705,11 +709,11 @@ function App() {
 
         <div 
         style={{
-          background:"white",
+          background:"#1e1d1d",
           padding:"20px",
           borderRadius:"12px",
           marginBottom:"20px",
-          boxShadow: "0 2px 10px rgba(0,0,0,0.08)"
+          boxShadow: "0 2px 10px rgb(0, 0, 0)"
           }}
         >
         <button 
@@ -717,7 +721,7 @@ function App() {
           style={{
             width:"100%",
             padding:"10px",
-            background:"#2563eb",
+            background:"#434447",
             color:"white",
             border:"none",
             borderRadius:"8px",
@@ -740,7 +744,7 @@ function App() {
               cursor:"pointer",
               marginBottom:"10px",
               background:
-                currentSession === s.id ? "#dbeafe" : "#f1f5f9" 
+                currentSession === s.id ? "#7e7e7e" : "#ffffff" 
                 }}
             >
               <div
@@ -761,7 +765,7 @@ function App() {
                       cursor: "pointer"
                     }}
                   >
-                    ❌
+                    🚫
                   </button>
                 </div>
               </div>
@@ -773,10 +777,10 @@ function App() {
 
         <div
           style={{
-            background: "white",
+            background: "#1e1d1d",
             padding: "20px",
             borderRadius: "12px",
-            boxShadow: "0 2px 10px rgba(0,0,0,0.08)",
+            boxShadow: "0 2px 10px rgb(0, 0, 0)",
             maxHeight: "650px",
             overflowY: "auto"
           }}
@@ -784,10 +788,12 @@ function App() {
 
           <h3
             style={{
-              marginTop: 0
+              marginTop: 0,
+              color: "#ffff"
             }}
           >
-            📁 My PDFs
+            My PDFs
+            <hr />
           </h3>
 
           {pdfs.length === 0 ? (
@@ -801,14 +807,14 @@ function App() {
               <div
                 key={index}
                 style={{
-                  border: "1px solid #e2e8f0",
+                  border: "1px solid #7e7e7e",
                   borderRadius: "10px",
                   padding: "10px",
                   marginBottom: "10px",
                   background:
                     selectedPDFs.includes(pdf)
-                      ? "#dbeafe"
-                      : "#fff"
+                      ? "#7e7e7e"
+                      : "#ffff"
                 }}
               >
 
@@ -855,7 +861,7 @@ function App() {
                       fontSize: "16px"
                     }}
                   >
-                    ❌
+                    🚫
                   </button>
 
                 </div>
@@ -876,20 +882,22 @@ function App() {
 
         <div
           style={{
-            background: "white",
+            background: "#1e1d1d",
             borderRadius: "12px",
             padding: "20px",
-            boxShadow: "0 2px 10px rgba(0,0,0,0.08)",
+            boxShadow: "0 2px 10px rgb(0, 0, 0)",
             marginBottom: "20px"
           }}
         >
 
           <h3
             style={{
-              marginTop: 0
+              marginTop: 0,
+              color: "#ffff"
             }}
           >
-            💬 Chat
+            Chat
+            <hr />
           </h3>
 
           <div
@@ -897,9 +905,10 @@ function App() {
               height: "450px",
               overflowY: "auto",
               padding: "10px",
-              background: "#f8fafc",
+              background: "#1e1d1d",
               borderRadius: "10px",
-              border: "1px solid #e2e8f0"
+              border: "1px solid #1e1d1d",
+              scrollbarWidth: "none"
             }}
           >
 
@@ -924,12 +933,12 @@ function App() {
                     borderRadius: "12px",
                     background:
                       msg.role === "user"
-                        ? "#2563eb"
-                        : "#e2e8f0",
+                        ? "#262728"
+                        : "#171818",
                     color:
                       msg.role === "user"
                         ? "white"
-                        : "black"
+                        : "#aeadad"
                   }}
                 >
 
@@ -976,15 +985,16 @@ function App() {
                 flex: 1,
                 padding: "14px",
                 borderRadius: "10px",
-                border: "1px solid #cbd5e1",
-                fontSize: "15px"
+                border: "1px solid #515151",
+                fontSize: "15px",
+                background: "#515151"
               }}
             />
 
             <button
               onClick={askQuestion}
               style={{
-                background: "#2563eb",
+                background: "#128549",
                 color: "white",
                 border: "none",
                 padding: "0 25px",
@@ -1004,19 +1014,21 @@ function App() {
 
         <div
           style={{
-            background: "white",
+            background: "#1e1d1d",
             padding: "20px",
             borderRadius: "12px",
-            boxShadow: "0 2px 10px rgba(0,0,0,0.08)"
+            boxShadow: "0 2px 10px rgb(0, 0, 0)"
           }}
         >
 
           <h3
             style={{
-              marginTop: 0
+              marginTop: 0,
+              color: "#ffff"
             }}
           >
-            📚 Sources
+            Sources
+            <hr />
           </h3>
 
           {sources.length === 0 ? (
@@ -1033,42 +1045,46 @@ function App() {
                   setSelectedSource(s)
                 }
                 style={{
-                  border: "1px solid #e2e8f0",
+                  border: "1px solid #373737",
                   borderRadius: "10px",
                   padding: "15px",
                   marginBottom: "12px",
                   cursor: "pointer",
                   transition: "0.2s",
-                  background: "#f8fafc"
+                  background: "#373737"
                 }}
               >
 
                 <div
                   style={{
                     fontWeight: "bold",
-                    color: "#2563eb",
+                    color: "#ffff",
                     marginBottom: "8px"
                   }}
                 >
                   [Source {index + 1}]
                 </div>
 
-                <div>
-                  <b>📄 File:</b> {s.source}
+                <div 
+                  style={{
+                    color: "#ffff"
+                  }}>
+                  <b>File:</b> {s.source}
                 </div>
 
                 <div
                   style={{
-                    marginTop: "5px"
+                    marginTop: "5px",
+                    color: "#ffff"
                   }}
                 >
-                  <b>📖 Page:</b> {s.page + 1}
+                  <b>Page:</b> {s.page + 1}
                 </div>
 
                 <p
                   style={{
                     marginTop: "10px",
-                    color: "#475569",
+                    color: "#cecece",
                     lineHeight: "1.5"
                   }}
                 >

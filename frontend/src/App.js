@@ -3,6 +3,7 @@ import React, {
   useEffect
 } from "react";
 
+
 import { Document, Page } from "react-pdf";
 
 import { pdfjs } from "react-pdf";
@@ -10,6 +11,7 @@ import { pdfjs } from "react-pdf";
 
 import "react-pdf/dist/Page/TextLayer.css";
 import "react-pdf/dist/Page/AnnotationLayer.css";
+
 
 pdfjs.GlobalWorkerOptions.workerSrc =
   `${process.env.PUBLIC_URL}/pdf.worker.min.js`;
@@ -67,6 +69,15 @@ function App() {
   const [numPages, setNumPages] = useState(null);
 
   // ======================================================
+  // CHAT SESSION
+  // ======================================================
+
+  const[sessions,setSessions]=useState([]);
+  const[currentSession,setCurrentSession]=useState(0);
+  const [editingSession, setEditingSession] = useState(null);
+  const [newSessionTitle, setNewSessionTitle] = useState("");
+
+  // ======================================================
   // LOAD HISTORY
   // ======================================================
 
@@ -75,6 +86,8 @@ function App() {
   if (token) {
 
     loadHistory();
+
+    loadSessions();
 
     loadPDFs();
   }
@@ -146,6 +159,101 @@ function App() {
     localStorage.removeItem("username");
 
     setToken(null);
+
+    setChat([]);
+  };
+
+
+
+  const loadSessions=async()=>{
+    const response=await fetch("http://127.0.0.1:8000/sessions",
+      {
+        headers:{
+          Authorization:`Bearer ${token}`
+        }
+      });
+      
+      const data=await response.json();
+
+      setSessions(data);
+
+      if(data.length > 0 && !currentSession) {
+        setCurrentSession(data[0].id);
+
+        loadSessionMessages(data[0].id);
+      }
+    };
+
+
+    const loadSessionMessages=async(sessionId)=>{
+      const response=await fetch(`http://127.0.0.1:8000/session/${sessionId}/messages`,
+        {
+          headers:{
+            Authorization:`Bearer ${token}`
+          }
+        });
+
+        const data=await response.json();
+        
+        setChat(data);
+    };
+
+    const createSession=async()=>{
+      const response=await fetch("http://127.0.0.1:8000/create-session",
+        {
+          method: "POST",
+          headers:{
+            Authorization:`Bearer ${token}`
+          }
+        });
+
+        const data=await response.json();
+
+        loadSessions();
+        
+        setCurrentSession(data.id);
+
+        setChat([]);
+    };
+
+    const deleteSession=async(id)=>{
+      await fetch(`http://127.0.0.1:8000/session/${id}`,
+      {
+        method: "DELETE",
+        headers:
+        {
+          Authorization:`Bearer ${token}`
+        }
+      });
+
+      loadSessions();
+
+      setChat([]);
+    };
+
+    const renameSession = async (id) => {
+
+  if (!newSessionTitle.trim()) return;
+
+  await fetch(
+    `http://127.0.0.1:8000/session/${id}/rename`,
+    {
+      method: "PUT",
+      headers: {
+        "Content-Type": "application/json",
+        Authorization: `Bearer ${token}`
+      },
+      body: JSON.stringify({
+        title: newSessionTitle
+      })
+    }
+  );
+
+    setEditingSession(null);
+
+    setNewSessionTitle("");
+
+    loadSessions();
 
     setChat([]);
   };
@@ -230,6 +338,10 @@ function App() {
   // ======================================================
 
   const askQuestion = async () => {
+    if (!currentSession) {
+  alert("Please create/select a chat first");
+  return;
+}
 
     if (!question.trim()) return;
 
@@ -269,7 +381,8 @@ function App() {
         body: JSON.stringify({
           question,
           history: newChat,
-          selected_pdfs: selectedPDFs
+          selected_pdfs: selectedPDFs,
+          session_id:currentSession
         })
       }
     );
@@ -325,7 +438,8 @@ function App() {
           body: JSON.stringify({
             question,
             history: newChat,
-            selected_pdfs: selectedPDFs
+            selected_pdfs: selectedPDFs,
+            session_id:currentSession
           })
         }
       );
@@ -492,7 +606,7 @@ function App() {
 
   <div
     style={{
-      background: "#f4f7fb",
+      background: "#000000",
       minHeight: "100vh",
       padding: "20px",
       fontFamily: "Arial"
@@ -507,10 +621,10 @@ function App() {
         justifyContent: "space-between",
         alignItems: "center",
         marginBottom: "20px",
-        background: "white",
+        background: "#1e1d1d",
         padding: "20px",
         borderRadius: "12px",
-        boxShadow: "0 2px 10px rgba(0,0,0,0.08)"
+        boxShadow: "0 2px 10px rgb(0, 0, 0)"
       }}
     >
 
@@ -519,16 +633,17 @@ function App() {
         <h1
           style={{
             margin: 0,
-            color: "#1e293b"
+            color: "#ffffff"
           }}
         >
-          📘 RAG PDF Chatbot
+          RAG PDF Chatbot
+          <hr />
         </h1>
 
         <p
           style={{
             marginTop: "5px",
-            color: "#64748b"
+            color: "#cecece"
           }}
         >
           Welcome, {username}
@@ -571,20 +686,22 @@ function App() {
 
         <div
           style={{
-            background: "white",
+            background: "#1e1d1d",
             padding: "20px",
             borderRadius: "12px",
             marginBottom: "20px",
-            boxShadow: "0 2px 10px rgba(0,0,0,0.08)"
+            boxShadow: "0 2px 10px rgb(0, 0, 0)"
           }}
         >
 
           <h3
             style={{
-              marginTop: 0
+              marginTop: 0,
+              color: "#ffff"
             }}
           >
-            📤 Upload PDF
+            Upload PDF
+            <hr />
           </h3>
 
           <input
@@ -596,7 +713,8 @@ function App() {
               )
             }
             style={{
-              marginBottom: "10px"
+              marginBottom: "10px",
+              color: "#ffff"
             }}
           />
 
@@ -604,7 +722,7 @@ function App() {
             onClick={uploadPDF}
             style={{
               width: "100%",
-              background: "#2563eb",
+              background: "#434447",
               color: "white",
               border: "none",
               padding: "10px",
@@ -618,14 +736,118 @@ function App() {
 
         </div>
 
+        <div 
+        style={{
+          background:"#1e1d1d",
+          padding:"20px",
+          borderRadius:"12px",
+          marginBottom:"20px",
+          boxShadow: "0 2px 10px rgb(0, 0, 0)"
+          }}
+        >
+        <button 
+          onClick={createSession}
+          style={{
+            width:"100%",
+            padding:"10px",
+            background:"#434447",
+            color:"white",
+            border:"none",
+            borderRadius:"8px",
+            marginBottom:"15px",
+            cursor: "pointer",
+            fontWeight: "bold"
+          }}
+        >
+          +New Chat
+          </button>
+          {sessions.map((s)=>(
+            <div key={s.id}
+            onClick={()=>{
+              setCurrentSession(s.id);
+              loadSessionMessages(s.id);
+            }}
+            style={{
+              padding:"10px",
+              borderRadius:"8px",
+              cursor:"pointer",
+              marginBottom:"10px",
+              background:
+                currentSession === s.id ? "#7e7e7e" : "#ffffff" 
+                }}
+            >
+              <div
+                style={{
+                display: "flex",
+                justifyContent: "space-between"
+                }}
+                >
+                  {editingSession === s.id ? (
+
+                    <input
+                      value={newSessionTitle}
+                      onChange={(e) =>
+                        setNewSessionTitle(e.target.value)
+                      }
+                      onBlur={() =>
+                        renameSession(s.id)
+                      }
+                      onKeyDown={(e) => {
+                      
+                        if (e.key === "Enter") {
+                        
+                          renameSession(s.id);
+                        }
+                      }}
+                      autoFocus
+                      style={{
+                        padding: "4px",
+                        borderRadius: "6px",
+                        border: "1px solid #ccc",
+                        width: "140px"
+                      }}
+                    />
+                    
+                  ) : (
+                  
+                    <span
+                      onDoubleClick={() => {
+                      
+                        setEditingSession(s.id);
+                      
+                        setNewSessionTitle(s.title);
+                      }}
+                    >
+                      {s.title}
+                    </span>
+                  )}
+                  <button
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      deleteSession(s.id);
+                    }}
+                    style={{
+                      border: "none",
+                      background: "transparent",
+                      cursor: "pointer"
+                    }}
+                  >
+                    🚫
+                  </button>
+                </div>
+              </div>
+            ))
+          }
+        </div>
+
         {/* PDF LIST */}
 
         <div
           style={{
-            background: "white",
+            background: "#1e1d1d",
             padding: "20px",
             borderRadius: "12px",
-            boxShadow: "0 2px 10px rgba(0,0,0,0.08)",
+            boxShadow: "0 2px 10px rgb(0, 0, 0)",
             maxHeight: "650px",
             overflowY: "auto"
           }}
@@ -633,10 +855,12 @@ function App() {
 
           <h3
             style={{
-              marginTop: 0
+              marginTop: 0,
+              color: "#ffff"
             }}
           >
-            📁 My PDFs
+            My PDFs
+            <hr />
           </h3>
 
           {pdfs.length === 0 ? (
@@ -650,14 +874,14 @@ function App() {
               <div
                 key={index}
                 style={{
-                  border: "1px solid #e2e8f0",
+                  border: "1px solid #7e7e7e",
                   borderRadius: "10px",
                   padding: "10px",
                   marginBottom: "10px",
                   background:
                     selectedPDFs.includes(pdf)
-                      ? "#dbeafe"
-                      : "#fff"
+                      ? "#7e7e7e"
+                      : "#ffff"
                 }}
               >
 
@@ -704,7 +928,7 @@ function App() {
                       fontSize: "16px"
                     }}
                   >
-                    ❌
+                    🚫
                   </button>
 
                 </div>
@@ -725,20 +949,22 @@ function App() {
 
         <div
           style={{
-            background: "white",
+            background: "#1e1d1d",
             borderRadius: "12px",
             padding: "20px",
-            boxShadow: "0 2px 10px rgba(0,0,0,0.08)",
+            boxShadow: "0 2px 10px rgb(0, 0, 0)",
             marginBottom: "20px"
           }}
         >
 
           <h3
             style={{
-              marginTop: 0
+              marginTop: 0,
+              color: "#ffff"
             }}
           >
-            💬 Chat
+            Chat
+            <hr />
           </h3>
 
           <div
@@ -746,9 +972,10 @@ function App() {
               height: "450px",
               overflowY: "auto",
               padding: "10px",
-              background: "#f8fafc",
+              background: "#1e1d1d",
               borderRadius: "10px",
-              border: "1px solid #e2e8f0"
+              border: "1px solid #1e1d1d",
+              scrollbarWidth: "none"
             }}
           >
 
@@ -773,12 +1000,12 @@ function App() {
                     borderRadius: "12px",
                     background:
                       msg.role === "user"
-                        ? "#2563eb"
-                        : "#e2e8f0",
+                        ? "#262728"
+                        : "#171818",
                     color:
                       msg.role === "user"
                         ? "white"
-                        : "black"
+                        : "#aeadad"
                   }}
                 >
 
@@ -825,15 +1052,16 @@ function App() {
                 flex: 1,
                 padding: "14px",
                 borderRadius: "10px",
-                border: "1px solid #cbd5e1",
-                fontSize: "15px"
+                border: "1px solid #515151",
+                fontSize: "15px",
+                background: "#515151"
               }}
             />
 
             <button
               onClick={askQuestion}
               style={{
-                background: "#2563eb",
+                background: "#128549",
                 color: "white",
                 border: "none",
                 padding: "0 25px",
@@ -853,19 +1081,21 @@ function App() {
 
         <div
           style={{
-            background: "white",
+            background: "#1e1d1d",
             padding: "20px",
             borderRadius: "12px",
-            boxShadow: "0 2px 10px rgba(0,0,0,0.08)"
+            boxShadow: "0 2px 10px rgb(0, 0, 0)"
           }}
         >
 
           <h3
             style={{
-              marginTop: 0
+              marginTop: 0,
+              color: "#ffff"
             }}
           >
-            📚 Sources
+            Sources
+            <hr />
           </h3>
 
           {sources.length === 0 ? (
@@ -882,42 +1112,46 @@ function App() {
                   setSelectedSource(s)
                 }
                 style={{
-                  border: "1px solid #e2e8f0",
+                  border: "1px solid #373737",
                   borderRadius: "10px",
                   padding: "15px",
                   marginBottom: "12px",
                   cursor: "pointer",
                   transition: "0.2s",
-                  background: "#f8fafc"
+                  background: "#373737"
                 }}
               >
 
                 <div
                   style={{
                     fontWeight: "bold",
-                    color: "#2563eb",
+                    color: "#ffff",
                     marginBottom: "8px"
                   }}
                 >
                   [Source {index + 1}]
                 </div>
 
-                <div>
-                  <b>📄 File:</b> {s.file}
+                <div 
+                  style={{
+                    color: "#ffff"
+                  }}>
+                  <b>File:</b> {s.source}
                 </div>
 
                 <div
                   style={{
-                    marginTop: "5px"
+                    marginTop: "5px",
+                    color: "#ffff"
                   }}
                 >
-                  <b>📖 Page:</b> {s.page + 1}
+                  <b>Page:</b> {s.page + 1}
                 </div>
 
                 <p
                   style={{
                     marginTop: "10px",
-                    color: "#475569",
+                    color: "#cecece",
                     lineHeight: "1.5"
                   }}
                 >
@@ -1012,11 +1246,32 @@ function App() {
             >
 
               <Page
-                pageNumber={
-                  selectedSource.page + 1
-                }
-                width={900}
-              />
+  pageNumber={selectedSource.page + 1}
+  width={900}
+  renderTextLayer={true}
+  customTextRenderer={({ str }) => {
+
+    const snippetWords =
+      selectedSource?.snippet
+        ?.toLowerCase()
+        .split(" ");
+
+    const shouldUnderline =
+      snippetWords?.some(
+        word =>
+          word.length > 4 &&
+          str.toLowerCase().includes(word)
+      );
+
+    return shouldUnderline
+      ? `<span style="
+  text-decoration: underline;
+  text-decoration-color: yellow;
+  text-decoration-thickness: 3px;
+">${str}</span>`
+      : str;
+  }}
+/>
 
             </Document>
 

@@ -8,6 +8,7 @@ from fastapi import (
 
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import StreamingResponse
+from fastapi.responses import FileResponse
 
 from pydantic import BaseModel
 
@@ -30,6 +31,7 @@ import os
 
 from database import SessionLocal, engine
 from models import Base, ChatMessage, User
+
 
 # ======================================================
 # APP
@@ -85,6 +87,8 @@ class QuestionRequest(BaseModel):
 
     history: list = []
 
+    selected_pdfs: list = []
+
 # ======================================================
 # EMBEDDINGS
 # ======================================================
@@ -97,47 +101,96 @@ embedding = HuggingFaceEmbeddings(
 # CHROMA
 # ======================================================
 
-vectorstore = Chroma(
-    persist_directory="chroma_db",
-    embedding_function=embedding
-)
+def get_vectorstore(username):
+
+    path = f"chroma_db/{username}"
+
+    os.makedirs(path, exist_ok=True)
+
+    return Chroma(
+        persist_directory=path,
+        embedding_function=embedding
+    )
+
 
 # ======================================================
 # BM25
 # ======================================================
 
-def load_bm25():
-
-    global all_docs
-    global all_metadatas
-    global bm25
+def load_bm25(vectorstore):
 
     data = vectorstore.get()
 
-    all_docs = data["documents"]
+    docs = data["documents"]
 
-    all_metadatas = data["metadatas"]
+    metadatas = data["metadatas"]
 
-    tokenized = [
-        doc.split()
-        for doc in all_docs
-    ]
-
-    bm25 = BM25Okapi(tokenized)
-
-
-load_bm25()
+    return docs, metadatas
 
 # ======================================================
 # HYBRID SEARCH
 # ======================================================
 
-def hybrid_search(query, k=3):
+def hybrid_search(query, vectorstore, selected_pdfs=None, k=3):
 
-    vector_results = vectorstore.similarity_search(
-        query,
-        k=k
+    docs, metadatas = load_bm25(
+    vectorstore
     )
+
+    # FILTER PDFs
+
+    if selected_pdfs:
+
+        filtered_docs = []
+
+        filtered_metadatas = []
+
+        for doc, metadata in zip(
+            docs,
+            metadatas
+        ):
+
+            if metadata.get("source") in selected_pdfs:
+
+                filtered_docs.append(doc)
+
+                filtered_metadatas.append(metadata)
+
+        docs = filtered_docs
+
+        metadatas = filtered_metadatas
+
+    # BUILD BM25
+
+    tokenized = [
+        doc.split()
+        for doc in docs
+    ]
+
+    bm25 = BM25Okapi(tokenized)
+
+    # VECTOR SEARCH
+
+    all_vector_results = vectorstore.similarity_search(
+    query,
+    k=20
+    )
+
+    vector_results = []
+
+    for doc in all_vector_results:
+
+        if not selected_pdfs:
+
+            vector_results.append(doc)
+
+        elif doc.metadata.get("source") in selected_pdfs:
+
+            vector_results.append(doc)
+
+    vector_results = vector_results[:k]
+
+    # BM25
 
     scores = bm25.get_scores(
         query.split()
@@ -154,9 +207,11 @@ def hybrid_search(query, k=3):
     for idx in top_indices:
 
         bm25_results.append({
-            "page_content": all_docs[idx],
-            "metadata": all_metadatas[idx]
+            "page_content": docs[idx],
+            "metadata": metadatas[idx]
         })
+
+    # COMBINE
 
     combined = []
 
@@ -335,6 +390,8 @@ def ask_stream(
 
     user_id = user["user_id"]
 
+    vectorstore = get_vectorstore(user["username"])
+
     db = SessionLocal()
 
     # SAVE USER MESSAGE
@@ -351,7 +408,11 @@ def ask_stream(
 
     # SEARCH
 
-    docs = hybrid_search(req.question)
+    docs = hybrid_search(
+    req.question,
+    vectorstore,
+    req.selected_pdfs
+    )
 
     # CONTEXT
 
@@ -451,25 +512,38 @@ def ask_sources(
 
     token = get_token(authorization)
 
-    get_user(token)
+    user = get_user(token)
 
-    docs = hybrid_search(req.question)
+    vectorstore = get_vectorstore(user["username"])
+
+    docs = hybrid_search(
+    req.question,
+    vectorstore,
+    req.selected_pdfs
+    )
 
     sources = []
 
     for doc in docs:
 
+        metadata = doc["metadata"]
+
         sources.append({
-            "id": doc["id"],
-            "file": doc["metadata"].get(
-                "source",
-                "unknown.pdf"
-            ),
-            "page": doc["metadata"].get(
-                "page",
-                -1
-            ),
-            "snippet": doc["page_content"][:150]
+
+            "source":
+                metadata.get(
+                    "source",
+                    "unknown"
+                ),
+
+            "page":
+                metadata.get(
+                    "page",
+                    0
+                ),
+
+            "snippet":
+                doc["page_content"][:300]
         })
 
     return {
@@ -515,11 +589,26 @@ def history(
 
 @app.post("/upload-pdf")
 async def upload_pdf(
-    file: UploadFile = File(...)
+    file: UploadFile = File(...),
+    authorization: str = Header(None)
 ):
+    
+    
+    token = get_token(authorization)
+
+    user = get_user(token)
+
+
+    user_id = user["user_id"]
+
+    username = user["username"]
+
+    user_folder = f"data/{username}"
+
+    os.makedirs(user_folder, exist_ok=True)
 
     file_path = os.path.join(
-        DATA_PATH,
+        user_folder,
         file.filename
     )
 
@@ -528,6 +617,8 @@ async def upload_pdf(
         content = await file.read()
 
         f.write(content)
+
+    vectorstore = get_vectorstore(user["username"])
 
     # LOAD PDF
 
@@ -562,9 +653,116 @@ async def upload_pdf(
 
     # RELOAD BM25
 
-    load_bm25()
-
     return {
         "message": f"{file.filename} uploaded",
         "chunks_added": len(docs)
     }
+
+# ======================================================
+# MY PDF
+# ======================================================
+
+@app.get("/my-pdfs")
+def my_pdfs(
+    authorization: str = Header(None)
+):
+
+    token = get_token(authorization)
+
+    user = get_user(token)
+
+    username = user["username"]
+
+    user_folder = f"data/{username}"
+
+    if not os.path.exists(user_folder):
+
+        return []
+
+    files = os.listdir(user_folder)
+
+    pdfs = []
+
+    for file in files:
+
+        if file.endswith(".pdf"):
+
+            pdfs.append(file)
+
+    return pdfs
+
+# ======================================================
+# DELETE PDF
+# ======================================================
+
+@app.delete("/delete-pdf/{filename}")
+def delete_pdf(
+    filename: str,
+    authorization: str = Header(None)
+):
+
+    token = get_token(authorization)
+
+    user = get_user(token)
+
+    username = user["username"]
+
+    user_folder = f"data/{username}"
+
+    file_path = os.path.join(
+        user_folder,
+        filename
+    )
+
+    # DELETE FILE
+
+    if os.path.exists(file_path):
+
+        os.remove(file_path)
+
+    # DELETE VECTOR DB
+
+    vectorstore = get_vectorstore(username)
+
+    data = vectorstore.get()
+
+    ids_to_delete = []
+
+    for idx, metadata in enumerate(
+        data["metadatas"]
+    ):
+
+        if metadata.get("source") == filename:
+
+            ids_to_delete.append(
+                data["ids"][idx]
+            )
+
+    if ids_to_delete:
+
+        vectorstore.delete(
+            ids=ids_to_delete
+        )
+
+    return {
+        "message": f"{filename} deleted"
+    }
+
+# ======================================================
+# PREVIEW PDF
+# ======================================================
+
+@app.get("/pdf/{username}/{filename}")
+def get_pdf(
+    username: str,
+    filename: str
+):
+
+    file_path = os.path.join(
+        f"data/{username}",
+        filename
+    )
+
+    return FileResponse(
+        file_path,
+        media_type="application/pdf")

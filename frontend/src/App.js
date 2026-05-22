@@ -74,6 +74,8 @@ function App() {
 
   const[sessions,setSessions]=useState([]);
   const[currentSession,setCurrentSession]=useState(0);
+  const [editingSession, setEditingSession] = useState(null);
+  const [newSessionTitle, setNewSessionTitle] = useState("");
 
   // ======================================================
   // LOAD HISTORY
@@ -228,6 +230,33 @@ function App() {
 
       setChat([]);
     };
+
+    const renameSession = async (id) => {
+
+  if (!newSessionTitle.trim()) return;
+
+  await fetch(
+    `http://127.0.0.1:8000/session/${id}/rename`,
+    {
+      method: "PUT",
+      headers: {
+        "Content-Type": "application/json",
+        Authorization: `Bearer ${token}`
+      },
+      body: JSON.stringify({
+        title: newSessionTitle
+      })
+    }
+  );
+
+    setEditingSession(null);
+
+    setNewSessionTitle("");
+
+    loadSessions();
+
+    setChat([]);
+  };
 
   // ======================================================
   // LOAD HISTORY
@@ -753,7 +782,45 @@ function App() {
                 justifyContent: "space-between"
                 }}
                 >
-                  <span>{s.title}</span>
+                  {editingSession === s.id ? (
+
+                    <input
+                      value={newSessionTitle}
+                      onChange={(e) =>
+                        setNewSessionTitle(e.target.value)
+                      }
+                      onBlur={() =>
+                        renameSession(s.id)
+                      }
+                      onKeyDown={(e) => {
+                      
+                        if (e.key === "Enter") {
+                        
+                          renameSession(s.id);
+                        }
+                      }}
+                      autoFocus
+                      style={{
+                        padding: "4px",
+                        borderRadius: "6px",
+                        border: "1px solid #ccc",
+                        width: "140px"
+                      }}
+                    />
+                    
+                  ) : (
+                  
+                    <span
+                      onDoubleClick={() => {
+                      
+                        setEditingSession(s.id);
+                      
+                        setNewSessionTitle(s.title);
+                      }}
+                    >
+                      {s.title}
+                    </span>
+                  )}
                   <button
                     onClick={(e) => {
                       e.stopPropagation();

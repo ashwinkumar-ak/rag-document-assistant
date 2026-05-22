@@ -94,6 +94,10 @@ class QuestionRequest(BaseModel):
 
     session_id:int
 
+class RenameSessionRequest(BaseModel):
+
+    title: str
+
 # ======================================================
 # EMBEDDINGS
 # ======================================================
@@ -914,4 +918,40 @@ def delete_session(
 
     return {
         "message": "Session deleted"
+    }
+
+# ======================================================
+# RENAME SESSION
+# ======================================================
+
+@app.put("/session/{session_id}/rename")
+def rename_session(
+    session_id: int,
+    req: RenameSessionRequest,
+    authorization: str = Header(None),
+    db: Session = Depends(get_db)
+):
+
+    user = get_user(
+        authorization.replace("Bearer ", "")
+    )
+
+    session = db.query(ChatSession).filter(
+        ChatSession.id == session_id,
+        ChatSession.user_id == user["user_id"]
+    ).first()
+
+    if not session:
+
+        raise HTTPException(
+            status_code=404,
+            detail="Session not found"
+        )
+
+    session.title = req.title
+
+    db.commit()
+
+    return {
+        "message": "Session renamed"
     }
